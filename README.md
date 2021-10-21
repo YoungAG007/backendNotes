@@ -4,7 +4,7 @@
 </p>
 <h1 align="center">young个人仓库</h1>
 
-<img src="D:\backendNotes\java-notes\README.assets\index.jpeg" alt="index" style="zoom:50%;" />
+<img src="backendNotes\java-notes\README.assets\index.jpeg" alt="index" style="zoom:50%;" />
 
 ### 作者介绍
 
