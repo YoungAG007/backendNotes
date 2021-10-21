@@ -3,5 +3,5 @@
 </p>
 <h1 align="center">young个人仓库</h1>
 
-[GitHub主页](https://https://github.com/YoungAG007)    [Gitee主页](https://https://gitee.com/youngag007)   [进入仓库](#kiki) 
+[GitHub主页](https://https://github.com/YoungAG007)    [Gitee主页](https://https://gitee.com/youngag007)   [进入仓库](#Young) 
 
