@@ -2,5 +2,5 @@ person
 
 ![nancy](person.assets\nancy.jpeg)
 
-![image-20211021135536390](D:\backendNotes\java-notes\docs\person.assets\image-20211021135536390.png)
+![image-20211021135536390](person.assets/image-20211021135536390-16347963224781.png)
 
