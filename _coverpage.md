@@ -1,5 +1,5 @@
 <p align="center">
-<img src="README.assets/index.jpeg" width="150" height="200"/>
+<img src="README.assets/index.jpg" width="150" height="200"/>
 </p>
 <h1 align="center">young个人仓库</h1>
 
