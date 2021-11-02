@@ -1160,15 +1160,31 @@ mybatis:
 
 - Cookie与Session的区别（javaweb）
 
-  Cookie是服务器发送到浏览器，并保存在浏览器端的一小块数据。浏览器下次访问该服务器时，会自动携带块该数据，将其发送给服务器。
+  ​    **Cookie是服务器发送到浏览器，并保存在浏览器端的一小块数据。浏览器下次访问该服务器时，会自动携带块该数据，将其发送给服务器**。
 
-  Session是JavaEE的标准，用于在服务端记录客户端信息。数据存放在服务端更加安全，但是也会增加服务端的内存压力。
+  ​    **浏览器访问服务器的时候，在服务端创建Session，并把sessionId作为Cookie对象传给浏览器，并保存在浏览器端，浏览器下一次访问指定路径的时候，将带上包含SessionId信息的Cookie，在服务端可进行比对。**
 
+  * 一个Cookie对象只能存储一对键值对。
+  * 一个Session对象可以存储很多键值对
+  * Cookie会在服务器与浏览器之间互相传送，所以Cookie信息过多的话，将对传输效率有所影响。
+  * Session是JavaEE的标准，用于在服务端记录客户端信息。数据存放在服务端更加安全，但是也会增加服务端的内存压力。
+  
   [JSP Cookie 处理 | 菜鸟教程 (runoob.com)](https://www.runoob.com/jsp/jsp-cookies.html)
-
+  
   [JSP Session | 菜鸟教程 (runoob.com)](https://www.runoob.com/jsp/jsp-session.html)
-
+  
   ![image-20210917103201330](community.assets/image-20210917103201330.png)
+
+![image-20211101152310527](community.assets/image-20211101152310527.png)
+
+【**Session在分布式中问题**】
+
+* 粘性Session   只要是同一个ip发起的请求都用同一个服务器处理， 这样session就只需创建一次，存在的问题是负载不均衡。
+* 同步Session  一个服务器创建Session后，将此Session同步给其他服务器。可以保证负载均衡。但是服务器之间产生耦合。
+* 共享Session  单独拿出一台服务器用来存放Session。但是万一这台服务器挂了，失去分布式最初的意义。
+* 能存Cookie就存在Cookie，敏感的数据数据库里
+  * 关系型数据库（MySql）把数据存在硬盘里，读取的时候效率比读内存中的数据低，在并发量比较大的时=时候可能也存在瓶颈。
+  * 存入非关系型（Nosql）数据库（如：Redis）**推荐使用**。
 
 
 
@@ -1187,7 +1203,7 @@ mybatis:
   </dependency>
   ```
 
-  > 编写 Kaptcha 配置类KaptchaConfig
+  > 编写 Kaptcha 配置类KaptchaConfig（加载到Spring容器里，Spiring对它进行初始化）
 
   ```java
   @Configuration
@@ -1267,6 +1283,8 @@ mybatis:
 
 
 ### 2.6 登录、退出功能
+
+![image-20211102163331864](community.assets/image-20211102163331864.png)
 
 - 访问登录页面 - 点击顶部区域内的链接，打开登录页面
 

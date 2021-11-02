@@ -118,3 +118,10 @@ where table_schema=‘数据库名’ and table_name=‘表名’;
 
 https://blog.csdn.net/sinat_34104446/article/details/82846585
 
+## Springboot学习部分
+
+问题一：org.junit.runners.model.InvalidTestClassError: Invalid test class
+
+原因 ：Test注解导入包时 误导入import org.junit.jupiter.api.Test
+
+解决：https://blog.csdn.net/qq_43377329/article/details/107460727
