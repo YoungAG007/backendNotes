@@ -1301,9 +1301,52 @@ mybatis:
   }
   ```
 
+* 记录用户登录状态的实体类LoginTicket
+
+![image-20211102202149909](community.assets/image-20211102202149909.png)
+
+   在entity包下创建LoginTicket类：
+
+```java
+public class LoginTicket {
+    private int id;
+    private int userId;
+    private String ticket;
+    private int status;
+    private Date expired;
+    ...
+ }
+```
+
+* dao层创建LoginTicketMapper
+
+```java
+@Mapper
+public interface LoginTicketMapper {
+
+    @Insert({
+         "insert into login_ticket (user_id,ticket,status,expired) ",
+            "values(#{userId},#{ticket},#{status},#{expired})"
+    })
+    @Options(useGeneratedKeys = true,keyProperty = "id") //自动生成主键
+    int insertLoginTicket(LoginTicket loginTicket);
+
+    @Select({
+            "select id,user_id,ticket,status,expired",
+            "from login_ticket where ticket=#{ticket}"
+    })
+    LoginTicket selectByTicket(String ticket);
+
+    @Update({
+            "update login_ticket set status=#{status} where ticket=#{ticket}"
+    })
+    int updateStatus(String ticket, int status);
+}
+```
 
 
--  登录
+
+- service层登录功能实现
 
   > service层验证账号、密码、验证码，登录成功生成登录凭证存入数据库
 
@@ -1316,85 +1359,90 @@ mybatis:
    * @param expiredSeconds: 过期时间
    * @return java.util.Map<java.lang.String,java.lang.Object>:
    */
-  public Map<String, Object> login(String username, String password, long expiredSeconds) {
-      Map<String, Object> map = new HashMap<>();
+  public Map<String, Object> login(String username, String password, long expiredSeconds){
+          Map<String, Object> map = new HashMap<>();
   
-      // 空值处理
-      if (StringUtils.isBlank(username)) {
-          map.put("usernameMsg", "账号不能为空！");
+          //空值处理
+          if(StringUtils.isBlank(username)){
+              map.put("usernameMsg", "账号不能为空");
+              return map;
+          }
+          if(StringUtils.isBlank(password)){
+              map.put("passwordMsg", "密码不能为空");
+              return map;
+          }
+  
+          //验证账号
+          User user = userMapper.selectByName(username);
+          if(user == null){
+              map.put("usernameMsg", "该账号不存在");
+              return map;
+          }
+          //判断账号激活了没
+          if(user.getStatus() == 0){
+              map.put("usernameMsg", "该账号未激活");
+              return map;
+          }
+          //验证密码
+          password = CommunityUtil.md5(password + user.getSalt());
+          if(!user.getPassword().equals(password)){
+              map.put("passwordMsg", "密码不正确");
+              return map;
+          }
+          //以上都没问题 账号密码都没问题
+          //生成登录凭证
+          LoginTicket loginTicket = new LoginTicket();
+          loginTicket.setUserId(user.getId());
+          loginTicket.setTicket(CommunityUtil.generateUUID());
+          loginTicket.setStatus(0);
+          loginTicket.setExpired(new Date(System.currentTimeMillis() + expiredSeconds * 1000));
+          loginTicketMapper.insertLoginTicket(loginTicket);
+          //把ticket放到map中返回
+          map.put("ticket", loginTicket.getTicket());
           return map;
-      }
-      if (StringUtils.isBlank(password)) {
-          map.put("passwordMsg", "密码不能为空！");
-          return map;
-      }
   
-      // 验证账号是否存在,是否激活
-      User user = userDao.queryByUsername(username);
-      if (user == null) {
-          map.put("usernameMsg", "该账号不存在！");
-          return map;
       }
-      if (user.getStatus() == 0) {
-          map.put("usernameMsg", "该账号未激活");
-          return map;
-      }
-  
-      // 验证密码
-      // 传入的明文密码加密后再比较
-      String passowrd = CommunityUtil.md5(password + user.getSalt());
-      if (!user.getPassword().equals(passowrd)) {
-          map.put("passwordMsg", "密码不正确！");
-          return map;
-      }
-  
-      // 登录成功，生成登录凭证
-      LoginTicket loginTicket = new LoginTicket();
-      loginTicket.setUserId(user.getId());
-      loginTicket.setTicket(CommunityUtil.generateUUID());
-      loginTicket.setStatus(0);
-      loginTicket.setExpired(new Date(System.currentTimeMillis() + expiredSeconds * 1000));
-      loginTicketDao.insert(loginTicket);
-  
-      map.put("ticket", loginTicket.getTicket());
-  
-      return map;
-  }
   ```
 
   > controller层，登录成功时，登录凭证中的ticket发放给客户端。失败时，跳转回登录页。
 
   ```java
-  @PostMapping("/login")
-  public String login(String username, String password, String code, boolean rememberme,
-                      Model model, HttpSession session, HttpServletResponse response) {
-      //普通参数String boolean不会被注入model，但是会存在于request域中，请求转发时会再次带上
-  
-      // 首先判断验证码是否符合
-      String kaptcha = (String) session.getAttribute("kaptcha");
-      if (StringUtils.isBlank(kaptcha) || StringUtils.isBlank(code) || !kaptcha.equalsIgnoreCase(code)) {
-          model.addAttribute("codeMsg", "验证码不正确！");
-          return "/site/login";
+  /**
+       * 处理登录的功能
+       * @param username
+       * @param password
+       * @param code 验证码
+       * @param rememberme 是否勾选记住我
+       * @param model      数据需要转发到页面 所以需要model
+       * @param session    生成的验证码保存到了 session中 所以需要从session中取出验证码 与 用户实际输入的验证码 进行比较
+       * @param response   登录成功生成ticket凭证后 需要用cookie保存凭证信息到客户端（浏览器） 所以需要 HttpServletResponse
+       * @return
+       */
+      @RequestMapping(path = "/login",method = RequestMethod.POST)
+      public String login(String username, String password, String code, boolean rememberme,
+                          Model model, HttpSession session, HttpServletResponse response){
+          //检查验证码
+          String kaptcha = (String) session.getAttribute("kaptcha"); //用户进行login页面时 生成的验证码kaptcha保存在session中
+          if(StringUtils.isBlank(kaptcha) || StringUtils.isBlank(code) || !kaptcha.equalsIgnoreCase(code)){
+              //验证错误
+              model.addAttribute("codeMsg", "验证码不正确");
+              return "/site/login";
+          }
+          //检查账号密码
+          int expiredSeconds = rememberme ? REMEMBER_EXPIRED_SECOND:DEFAULT_EXPIRED_SECOND;//判断是否勾选记住我 赋予相应的时间
+          Map<String, Object> map = userService.login(username, password, expiredSeconds);//调用service层的login功能 返回登录相关反馈信息放在map中
+          if(map.containsKey("ticket")){
+              Cookie cookie = new Cookie("ticket", map.get("ticket").toString());
+              cookie.setPath(contextPath);
+              cookie.setMaxAge(expiredSeconds);
+              response.addCookie(cookie);
+              return "redirect:/index";
+          }else{
+              model.addAttribute("usernameMsg", map.get("usernameMsg"));
+              model.addAttribute("passwordMsg", map.get("passwordMsg"));
+              return "/site/login";
+          }
       }
-  
-      // 检查账号密码
-      long expiredSeconds = rememberme ? REMEMBER_EXPIRED_SECONDS : DEFAULT_EXPIRED_SECONDS;
-      Map<String, Object> map = userService.login(username, password, expiredSeconds);
-      if (map.containsKey("ticket")) {
-          //登录成功
-          Cookie cookie = new Cookie("ticket", map.get("ticket").toString());
-          //把ticket登录凭证设置为cookie，并对整个项目都有效 /community  #web的项目路径前缀
-          cookie.setPath(contextPath);
-          cookie.setMaxAge((int) expiredSeconds);
-          response.addCookie(cookie);
-          return "redirect:/index";
-      } else {
-          //登陆失败
-          model.addAttribute("usernameMsg", map.get("usernameMsg"));
-          model.addAttribute("passwordMsg", map.get("passwordMsg"));
-          return "site/login";
-      }
-  }
   ```
 
   > 登录相关常数工具类CommunityConstant
@@ -1411,7 +1459,77 @@ mybatis:
   long REMEMBER_EXPIRED_SECONDS = 3600 * 24 * 100;
   ```
 
-  
+  ```html
+  前端页面修改
+  <!-- 内容 -->
+  		<div class="main">
+  			<div class="container pl-5 pr-5 pt-3 pb-3 mt-3 mb-3">
+  				<h3 class="text-center text-info border-bottom pb-3">登&nbsp;&nbsp;录</h3>
+  				<form class="mt-5" method="post" th:action="@{/login}">
+  					<div class="form-group row">
+  						<label for="username" class="col-sm-2 col-form-label text-right">账号:</label>
+  						<div class="col-sm-10">
+  							<input type="text" th:class="|form-control ${usernameMsg!=null?'is-invalid':''}|"
+  								   th:value="${param.username}"
+  								   id="username" name="username" placeholder="请输入您的账号!" required>
+  							<div class="invalid-feedback" th:text="${usernameMsg}">
+  								该账号不存在!
+  							</div>
+  						</div>
+  					</div>
+  					<div class="form-group row mt-4">
+  						<label for="password" class="col-sm-2 col-form-label text-right">密码:</label>
+  						<div class="col-sm-10">
+  							<input type="password" th:class="|form-control ${passwordMsg!=null?'is-invalid':''}|"
+  								   th:value="${param.password}"
+  								   id="password" name="password" placeholder="请输入您的密码!" required>
+  							<div class="invalid-feedback" th:text="${passwordMsg}">
+  								密码长度不能小于8位!
+  							</div>							
+  						</div>
+  					</div>
+  					<div class="form-group row mt-4">
+  						<label for="verifycode" class="col-sm-2 col-form-label text-right">验证码:</label>
+  						<div class="col-sm-6">
+  							<input type="text" th:class="|form-control ${codeMsg!=null?'is-invalid':''}|"
+  								   id="verifycode" name="code" placeholder="请输入验证码!">
+  							<div class="invalid-feedback" th:text="${codeMsg}">
+  								验证码不正确!
+  							</div>
+  						</div>
+  						<div class="col-sm-4">
+  							<img th:src="@{/kaptcha}" id="kaptcha" style="width:100px;height:40px;" class="mr-2"/>
+  							<a href="javascript:refresh_kaptcha();" class="font-size-12 align-bottom">刷新验证码</a>
+  						</div>
+  					</div>				
+  					<div class="form-group row mt-4">
+  						<div class="col-sm-2"></div>
+  						<div class="col-sm-10">
+  							<input type="checkbox" id="remember-me" name="rememberme" th:checked="${param.rememberme}">
+  							<label class="form-check-label" for="remember-me">记住我</label>
+  							<a href="forget.html" class="text-danger float-right">忘记密码?</a>
+  						</div>
+  					</div>				
+  					<div class="form-group row mt-4">
+  						<div class="col-sm-2"></div>
+  						<div class="col-sm-10 text-center">
+  							<button type="submit" class="btn btn-info text-white form-control">立即登录</button>
+  						</div>
+  					</div>
+  				</form>				
+  			</div>
+  		</div>
+  ```
+
+  * th:class="|form-control ${usernameMsg!=null?'is-invalid':''}|"控制样式是否显示
+
+  * th:value="${param.username}" 对于没有封装到model中的数据 用此法 相当于从Request.getAttribute("username") 取出参数
+
+    ​      【说明：controller层的方法中的参数 如果不是对应一个entity类 那么SpringMVC就不会自动将其封装到Model中，此时前端如果要回显这些数据的话就需要从Request中取】
+
+  * th:text="${usernameMsg} 取出model中封装的反馈信息
+
+  * th:checked="${param.rememberme}   对于是否勾选的框 Boolean类型 可以代表是否勾选
 
 - 退出 - 将登录凭证修改为失效状态并跳转至网站首页
 
@@ -1625,6 +1743,8 @@ mybatis:
 
 ### 2.8 账号设置
 
+<img src="community.assets/image-20211103192904438.png" alt="image-20211103192904438" style="zoom: 67%;" />
+
 - 修改头像
 
   > 访问账号设置页面，index.html头部和UserController
@@ -1647,145 +1767,122 @@ mybatis:
   >
   > ​	表单：enctype=“multipart/form-data” 
   >
-  > ​	Spring MVC：通过 MultipartFile 处理上传文件
+  > ​	Spring MVC：通过 MultipartFile 处理上传文件  
 
-  ```html
-  <!-- 上传头像 -->
-  <h6 class="text-left text-info border-bottom pb-2">上传头像</h6>
-  <!--post请求 enctype属性是多部分表单形式 提交路径-->
-  <form class="mt-5" method="post" enctype="multipart/form-data" th:action="@{/user/upload}">
-     <div class="form-group row mt-4">
-        <label for="head-image" class="col-sm-2 col-form-label text-right">选择头像:</label>
-        <div class="col-sm-10">
-           <div class="custom-file">
-              <!--name属性与controller方法参数对应-->
-              <!--th:class判断是否显示错误消息-->
-              <input type="file" th:class="|custom-file-input ${error!=null?'is-invalid':''}|"
-                    id="head-image" name="headerImage" lang="es" required="">
-              <label class="custom-file-label" for="head-image" data-browse="文件">选择一张图片</label>
-              <!--处理错误信息的展示-->
-              <div class="invalid-feedback" th:text="${error}">
-                 错误信息!
-              </div>
-           </div>    
-        </div>
-     </div>
-     <div class="form-group row mt-4">
-        <div class="col-sm-2"></div>
-        <div class="col-sm-10 text-center">
-           <button type="submit" class="btn btn-info text-white form-control">立即上传</button>
-        </div>
-     </div>
-  </form>
-  ```
-
+  * Service层
+  
+  ​       UserServcie中添加修改头像路径的方法
+  
   ```java
-  @Value("${community.path.domain}")
-  private String domain;
+   public int updateHeader(int userId, String headUrl){
+          return userMapper.updateHeader(userId,headUrl);
+      }
+  ```
   
-  @Value("${community.path.upload-path}")
-  private String uploadPath;
+  * Controller层
   
-  @Value("${server.servlet.context-path}")
-  private String contextPath;
+    处理上传的文件数据，对头像文件进行存盘，并更新当前用户头像的路径（web访问路径)
   
-  @Resource
-  private UserService userService;
+  ```java
+  @Controller
+  @RequestMapping("/user")
+  public class UserController {
+      private static final Logger logger = LoggerFactory.getLogger(UserController.class);
   
-  @Resource
-  private HostHolder hostHolder;
+      @Value("${community.path.upload}")
+      private String uploadPath;
   
-  // 上传并修改用户头像
-  @PostMapping("/upload")
-  public String uploadHeader(MultipartFile headerImage, Model model) {
-      // 没有成功上传图像
-      if (headerImage == null) {
-          model.addAttribute("error", "您还没有选择图片！");
+      @Value("${community.path.domain}")
+      private String domain;
+  
+      @Value("${server.servlet.context-path}")
+      private String contextPath;
+  
+      @Autowired
+      private UserService userService;
+  
+      @Autowired
+      private HostHolder hostHolder;
+  
+      @RequestMapping("/setting")
+      public String getSettingPage(){
           return "/site/setting";
       }
   
-      // 获取上传文件名的后缀
-      String filename = headerImage.getOriginalFilename();
-      String suffix = filename.substring(filename.lastIndexOf("."));
-      if (StringUtils.isBlank(suffix)) {
-          model.addAttribute("error", "文件的格式不正确！");
-          return "/site/setting";
+      @PostMapping("/upload")
+      public String uploadHeader(MultipartFile headImage, Model model){
+          if(headImage == null){
+              model.addAttribute("error", "您还没有选择图片");
+              return "/site/setting";
+          }
+          String fileName = headImage.getOriginalFilename();
+          String suffix = fileName.substring(fileName.lastIndexOf(".") + 1);
+          if(StringUtils.isBlank(suffix)){
+              model.addAttribute("error", "文件的格式不正确");
+              return "/site/setting";
+          }
+          //生成随机的文件名
+          fileName = CommunityUtil.generateUUID() + "." + suffix;
+          //确定文件存放的路径
+          File dest = new File(uploadPath + "/" + fileName);
+          try {
+              //存储文件
+              headImage.transferTo(dest);
+          } catch (IOException e) {
+              logger.error("上传文件失败:" + e.getMessage());
+              throw new RuntimeException("上传文件失败，服务器发生异常");
+          }
+          //更新当前用户头像的路径（web访问路径)
+          //http://localhost:8080/community/user/header/xxx.png
+          User user = hostHolder.getUser();
+          String headerUrl = domain + contextPath + "/user/header/" + fileName;
+          userService.updateHeader(user.getId(),headerUrl);
+  
+          return "redirect:/index";
       }
   
-      // 生成随机文件名
-      filename = CommunityUtil.generateUUID() + suffix;
-      // 确定文件存放的路径
-      File dest = new File(uploadPath + "/" + filename);
-      // 把图像写入文件
-      try {
-          headerImage.transferTo(dest);
-      } catch (IOException e) {
-          logger.error("上传文件失败：" + e.getMessage());
-          throw new RuntimeException("上传文件失败，服务器发生异常！", e);
+      // 外界从头像存储位置获取头像（来向浏览器输出服务器存储的图片）
+      @RequestMapping(value = "/header/{fileName}", method = RequestMethod.GET)
+      public void getHeader(@PathVariable("fileName") String fileName, HttpServletResponse response){
+          //服务器存放路径
+          fileName = uploadPath + "/" + fileName;
+          //解析文件的后缀
+          String suffix = fileName.substring(fileName.lastIndexOf(".") + 1);
+          //响应图片
+          response.setContentType("image/" + suffix);
+  
+          try (
+                  FileInputStream fis = new FileInputStream(fileName);
+                  OutputStream os = response.getOutputStream();
+                  )
+          {
+              byte[] buffer = new byte[1024];
+              int b = 0;
+              while((b=fis.read(buffer)) != -1){
+                  os.write(buffer,0,b);
+              }
+          } catch (IOException e) {
+              logger.error("读取头像失败：" + e.getMessage());
+          }
       }
   
-      // 更新当前用户的头像路径（web路径而不是本地路径）
-      // 当前端th:src="http://localhost:8080/community/user/header/xxx.png"
-      // 又会调用springmvc映射的方法来向浏览器输出服务器存储的图片
-      String headUrl = domain + contextPath + "/user/header/" + filename;
-      // 把hostholder当成一个session来使用
-      User user = hostHolder.getUser();
-      userService.updateHeaderUrlById(user.getId(), headUrl);
-  
-      // 更新成功,重定向到首页
-      // return “/index”是返回一个模板路径，本次请求没有处理完，
-      //      DispatcherServlet会将Model中的数据和对应的模板提交给模板引擎，让它继续处理完这次请求。
-      // return "redirect:/index"是重定向，表示本次请求已经处理完毕，但是没有什么合适的数据展现给客户端，
-      //      建议客户端再发一次请求，访问"/index"以获得合适的数据。
-      return "redirect:/index";
   }
   ```
+  
+  >文件存放位置：application.properties
 
-  >文件存放位置：application.yml
-
-  ```yml
+  ```properties
   # 自定义配置
-  community:
-    path:
-      # 文件上传存放位置地址
-      upload-path: e:/community/data/upload
+  community.path.upload=d:/data/upload
   ```
-
+  
   >获取头像：前端index.html头部和UserController
 
   ```html
   <!--当前用户的头像、用户名-->
   <img th:src="${loginUser.headerUrl}" class="rounded-circle" style="width:30px;"/>
   ```
-
-  ```java
-  // 外界从头像存储位置获取头像（来向浏览器输出服务器存储的图片）
-  @GetMapping("header/{filename}")
-  public void getHeader(@PathVariable("filename")String fileName, HttpServletResponse response) {
-      // 服务器存放图片路径
-      fileName = uploadPath + "/" + fileName;
-      // 文件后缀（去除.）
-      String suffix = fileName.substring(fileName.lastIndexOf(".") + 1);
-      // 响应图片
-      response.setContentType("image/" + suffix);
-      // ()自动加上finally，一个输入流一个输出流
-      try (
-              FileInputStream fis = new FileInputStream(fileName);
-      ){
-          // springmvc管理会自动关闭
-          ServletOutputStream os = response.getOutputStream();
-          byte[] buffer = new byte[1024];
-          int b = 0;
-          while ((b = fis.read(buffer)) != -1) {
-              os.write(buffer, 0, b);
-          }
-      } catch (IOException e) {
-          logger.error("读取图片失败：" + e.getMessage());
-      }
-  }
-  ```
-
-
+  
 
 - 修改密码
 
@@ -1934,6 +2031,8 @@ mybatis:
 
 ### 2.9 检查登录状态
 
+![image-20211103215540730](community.assets/image-20211103215540730.png)
+
 - 自定义注解
 
   > 常用的元注解： @Target、@Retention、@Document、@Inherited
@@ -1984,7 +2083,7 @@ mybatis:
   }
   ```
 
-  > 配置拦截器
+  > 配置拦截器WebMvcConfig
 
   ```java
   @Configuration
