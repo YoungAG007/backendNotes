@@ -125,3 +125,11 @@ https://blog.csdn.net/sinat_34104446/article/details/82846585
 原因 ：Test注解导入包时 误导入import org.junit.jupiter.api.Test
 
 解决：https://blog.csdn.net/qq_43377329/article/details/107460727
+
+
+
+问题2：org.thymeleaf.exceptions.TemplateInputException: An error happened during template parsing (template: "class path resource [templates//site/profile.html]")
+
+![image-20211120112817861](编程bug收集.assets/image-20211120112817861.png)
+
+原因:在controller中封装数据对象进Model，并转发至页面，但是有某个变量没有在controller中未定义，或者在页面引用变量时名字写错了。

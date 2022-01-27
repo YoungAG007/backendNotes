@@ -9,8 +9,8 @@
 * [Spring注解开发](./docs/Spring注解开发.md)
 * [SpringBoot](./docs/SpringBoot.md)
 * [community社区项目](./docs/community.md)
+* [计算机网络](./docs/计算机网络.md)
 * [how-to-use-docsify](./docs/how-to-use-docsify.md)
 * [Git](./docs/Git(GitHubGiteeGitLab).md)
 * [Bug](./docs/编程bug收集.md)
-* [尚硅谷图解Java数据结构和算法](./docs/尚硅谷图解Java数据结构和算法.pdf)
 

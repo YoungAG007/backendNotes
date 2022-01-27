@@ -1883,7 +1883,6 @@ public interface LoginTicketMapper {
   <img th:src="${loginUser.headerUrl}" class="rounded-circle" style="width:30px;"/>
   ```
   
-
 - 修改密码
 
   > setting.html
@@ -1970,39 +1969,35 @@ public interface LoginTicketMapper {
    * @param newPassword:
    * @return java.util.Map<java.lang.String, java.lang.Object>:
    */
-  public Map<String, Object> updatePassword(int userId, String oldPassword, String newPassword) {
+  public Map<String, Object> updatePassword(int userId, String oldPassword, String newPassword){
+          Map<String,Object> map = new HashMap<>();
+          //空值处理
+          if(StringUtils.isBlank(oldPassword)){
+              map.put("oldPasswordMsg", "原密码不能为空！");
+              return map;
+          }
+          if(StringUtils.isBlank(newPassword)){
+              map.put("newPasswordMsg", "新密码不能为空");
+              return map;
+          }
+          //将输入的原密码进行加密
+          User user = userMapper.selectById(userId);
+          oldPassword = CommunityUtil.md5(oldPassword + user.getSalt());
+          if(!oldPassword.equals(user.getPassword())){
+              map.put("oldPasswordMsg", "原密码输入错误！");
+              return map;
+          }
+          //更新新密码
+          newPassword = CommunityUtil.md5(newPassword + user.getSalt());
+          userMapper.updatePassword(userId,newPassword);
   
-      Map<String, Object> map = new HashMap<>();
-  
-      // 空值处理
-      if (StringUtils.isBlank(oldPassword)) {
-          map.put("oldPasswordMsg", "原密码不能为空!");
           return map;
-      }
-      if (StringUtils.isBlank(newPassword)) {
-          map.put("newPasswordMsg", "新密码不能为空!");
-          return map;
-      }
   
-      // 验证原始密码
-      User user = userDao.queryById(userId);
-      oldPassword = CommunityUtil.md5(oldPassword + user.getSalt());
-      if (!user.getPassword().equals(oldPassword)) {
-          map.put("oldPasswordMsg", "原密码输入有误!");
-          return map;
       }
-  
-      // 更新密码
-      user.setSalt(CommunityUtil.generateUUID().substring(0, 5));
-      user.setPassword(CommunityUtil.md5(newPassword + user.getSalt()));
-      userDao.update(user);
-  
-      return map;
-  }
   ```
-
+  
   > UserController从当前线程中获取user作为service层密码验证条件，传递错误消息到前端
-
+  
   ```java
   @Resource
   private UserService userService;
@@ -2012,19 +2007,24 @@ public interface LoginTicketMapper {
   
   // 修改密码
   @PostMapping("/updatePassword")
-  public String updatePassword(String oldPassword, String newPassword, Model model) {
-      User user = hostHolder.getUser();
-      Map<String, Object> map = userService.updatePassword(user.getId(), oldPassword, newPassword);
-      if (map == null || map.isEmpty()) {
-          // 成功修改密码则重定向到登出功能，登出再重定向到登录页面
-          return "redirect:/logout";
-      } else {
-          model.addAttribute("oldPasswordMsg", map.get("oldPasswordMsg"));
-          model.addAttribute("newPasswordMsg", map.get("newPasswordMsg"));
-          // 出现错误，返回设置页面
-          return "/site/setting";
+      public String updatePassword(String oldPassword, String newPassword, Model model){
+          User user = hostHolder.getUser();
+          if(user == null){
+              logger.error("登录状态异常，请重新登录");
+              return "redirect:/login";
+          }
+          //调用service层更新方法
+          Map<String, Object> map = userService.updatePassword(user.getId(), oldPassword, newPassword);
+          if(map == null || map.isEmpty()){
+              //成功登录 重定向到退出功能 在logout中会重定向到登录页面
+              return "redirect:/logout";
+          }else {
+              model.addAttribute("oldPasswordMsg", map.get("oldPasswordMsg"));
+              model.addAttribute("newPasswordMsg", map.get("newPasswordMsg"));
+              //出现错误 返回到设置页面
+              return "/site/setting";
+          }
       }
-  }
   ```
 
 
@@ -2107,6 +2107,8 @@ public interface LoginTicketMapper {
 
 ### 3.1 过滤敏感词
 
+<img src="community.assets/image-20211104211638024.png" alt="image-20211104211638024" style="zoom: 50%;" />
+
 - 前缀树（Trie、字典树、查找树）
 
   ![img](community.assets/v2-9d07fbd164fc0d737aabe428b4484bd1_720w.png)
@@ -2114,6 +2116,10 @@ public interface LoginTicketMapper {
   > 特点：查找效率高，消耗内存大
   >
   > 应用：字符串检索、词频统计、字符串排序等
+  >
+  > 过滤算法：三个指针
+  >
+  > <img src="community.assets/image-20211104213306406.png" alt="image-20211104213306406" style="zoom: 50%;" />
 
 - 敏感词过滤器
 
@@ -2312,6 +2318,40 @@ public interface LoginTicketMapper {
   >
   >虽然X代表XML，但目前JSON的使用比XML更加普遍。
 
+- Fastjson
+
+​       在项目中导fastjson包，Fastjson 是一个 Java 库，可以将 Java 对象转换为 JSON 格式，当然它也可以将 JSON 字符串转换为 Java 对象。
+
+​       Fastjson 可以操作任何 Java 对象，即使是一些预先存在的没有源码的对象。
+
+* 使用fastjson编写工具类 实现java对象方便的转换成json对象
+
+```java
+public class CommunityUtil {
+    //调用fastjson 将常用的一些信息转换成json对象
+    public static String getJSONString(int code, String msg, Map<String, Object> map){
+        JSONObject json = new JSONObject();
+        json.put("code", code);
+        json.put("msg", msg);
+        if(map != null){
+            for(String key : map.keySet()){
+                json.put(key,map.get(key));
+            }
+        }
+        return json.toJSONString();
+    }
+    public static String getJSONString(int code, String msg){
+        return getJSONString(code,msg, null);
+    }
+    public static String getJSONString(int code){
+        return getJSONString(code,null, null);
+    }
+     
+}
+```
+
+
+
 - 使用jQuery发送AJAX请求，实现发布帖子的功能
 
   > DiscussPostService添加帖子（过滤敏感词和转义html标签）
@@ -2328,24 +2368,23 @@ public interface LoginTicketMapper {
    * @param discussPost:
    * @return int:
    */
-  public int addDiscussPost(DiscussPost discussPost) {
-      if (discussPost == null) {
-          throw new IllegalArgumentException("参数不能为空！");
+  public int addDiscussPost(DiscussPost post) {
+          if (post == null) {
+              throw new IllegalArgumentException("参数不能为空!");
+          }
+          // 转义HTML标记
+          post.setTitle(HtmlUtils.htmlEscape(post.getTitle()));
+          post.setContent(HtmlUtils.htmlEscape(post.getContent()));
+          // 过滤敏感词
+          post.setTitle(sensitiveFilter.filter(post.getTitle()));
+          post.setContent(sensitiveFilter.filter(post.getContent()));
+  
+          return discussPostMapper.insertDiscussPost(post);
       }
-  
-      // 转义HTML标记(恶意注册的时候，会使用诸如 <script>alert('papapa')</script>，转义标签)
-      discussPost.setTitle(HtmlUtils.htmlEscape(discussPost.getTitle()));
-      discussPost.setContent(HtmlUtils.htmlEscape(discussPost.getContent()));
-      // 过滤敏感词
-      discussPost.setTitle(sensitiveFilter.filter(discussPost.getTitle()));
-      discussPost.setContent(sensitiveFilter.filter(discussPost.getContent()));
-  
-      return discussPostDao.insert(discussPost);
-  }
   ```
-
+  
   >DisscussPostController调用add方法，向前端传递消息
-
+  
   ```java
   @Controller
   @RequestMapping("/discuss")
@@ -2382,9 +2421,9 @@ public interface LoginTicketMapper {
       }
   }
   ```
-
+  
   > index.html，发布按钮和引用jQuery和index.js
-
+  
   ```java
   <!--用户登录后才显示我要发布按钮，点击后出现弹窗-->
   <button type="button" class="btn btn-primary btn-sm position-absolute rt-0" data-toggle="modal"
@@ -2394,9 +2433,9 @@ public interface LoginTicketMapper {
   <script src="https://code.jquery.com/jquery-3.3.1.min.js" crossorigin="anonymous"></script>
   <script th:src="@{js/index.js}"></script>
   ```
-
+  
   > index.js中用jQuery实现AJAX
-
+  
   ```js
   /*绑定单击事件，调用publish函数*/
   $(function(){
@@ -2453,10 +2492,10 @@ public interface LoginTicketMapper {
    * @param id 主键
    * @return 实例对象
    */
-  @Override
-  public DiscussPost queryById(Integer id) {
-      return this.discussPostDao.queryById(id);
-  }
+  //根据id查询指定帖子
+      public DiscussPost findDiscussPostById(int id){
+          return discussPostMapper.selectDiscussPostById(id);
+      }
   ```
 
 
@@ -2464,17 +2503,16 @@ public interface LoginTicketMapper {
 - DiscussPostController
 
   ```java
-  @GetMapping("/detail/{discussPostId}")
-  public String getDiscussPost(@PathVariable("discussPostId") int discussPostId, Model model) {
-      // 帖子
-      DiscussPost post = discussPostService.queryById(discussPostId);
-      model.addAttribute("post", post);
-      // 通过userId查询对应的user数据
-      User user = userService.queryById(post.getUserId());
-      model.addAttribute("user", user);
-      // 跳转到帖子详情页面
-      return "/site/discuss-detail";
-  }
+  @RequestMapping(path = "/detail/{discussPostId}",method = RequestMethod.GET)
+      public String getDiscussPost(@PathVariable("discussPostId") int discussPostId, Model model){
+          //帖子
+          DiscussPost post = discussPostService.findDiscussPostById(discussPostId);
+          model.addAttribute("post", post);
+          //帖子作者
+          User user = userService.findUserById(post.getUserId());
+          model.addAttribute("user", user);
+          return "/site/discuss-detail";
+      }
   ```
 
 
@@ -2590,9 +2628,128 @@ public interface LoginTicketMapper {
 
 
 
+* 事务管理示例
+
+   【**声明式事务**】
+
+  ```java
+  @Service
+  public class AlphaService {
+      @Autowired
+      private UserMapper userMapper;
+      @Autowired
+      private DiscussPostMapper discussPostMapper;
+  
+      /**
+       * 事务传播机制
+       *  REQUIRED : 支持当前事务（外部事务） 如果不存在则创建新的事务
+       *  REQUIRED_NEW : 创建一个新事务，并且暂停当前事务（外部事务）
+       *  NESTED : 如果当前存在事务（外部事务），则嵌套在该事务中执行（独立的提交和回滚），否则就会像REQUIRED一样。
+       * @return
+       */
+      @Transactional(isolation = Isolation.READ_COMMITTED,propagation = Propagation.REQUIRED)
+      public Object save1(){
+          //新增用户
+          User user = new User();
+          user.setUsername("alpha");
+          user.setSalt(CommunityUtil.generateUUID().substring(0,5));
+          user.setPassword(CommunityUtil.md5("123") + user.getSalt());
+          user.setEmail("alpha@qq.com");
+          user.setHeaderUrl("http://image.nowcoder.com/head/99t.png");
+          user.setCreateTime(new Date());
+          userMapper.insertUser(user);
+          //新增帖子
+          DiscussPost post = new DiscussPost();
+          post.setUserId(user.getId());
+          post.setTitle("hello");
+          post.setContent("新人报道");
+          discussPostMapper.insertDiscussPost(post);
+  
+          Integer.valueOf("abc");
+          return "ok";
+      }
+  }
+  ```
+
+  【**编程式事务**】:业务逻辑复杂 而只想管理其中一小部分的时候，采用编程式业务
+
+  ```java
+   public Object save2(){
+          //设置隔离级别
+          transactionTemplate.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
+          //设置传播
+          transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
+  
+          return transactionTemplate.execute(new TransactionCallback<Object>() {
+              @Override
+              public Object doInTransaction(TransactionStatus status) {
+                  //新增用户
+                  User user = new User();
+                  user.setUsername("beta");
+                  user.setSalt(CommunityUtil.generateUUID().substring(0,5));
+                  user.setPassword(CommunityUtil.md5("123") + user.getSalt());
+                  user.setEmail("alpha@qq.com");
+                  user.setHeaderUrl("http://image.nowcoder.com/head/999t.png");
+                  user.setCreateTime(new Date());
+                  userMapper.insertUser(user);
+                  //新增帖子
+                  DiscussPost post = new DiscussPost();
+                  post.setUserId(user.getId());
+                  post.setTitle("你好");
+                  post.setContent("我是新人");
+                  discussPostMapper.insertDiscussPost(post);
+  
+                  Integer.valueOf("abc");
+                  return "ok";
+              }
+          });
+      }
+  ```
+
 ### 3.5 显示评论
 
+<img src="community.assets/image-20211108165944792.png" alt="image-20211108165944792" style="zoom: 67%;" />
+
 ![image-20210927094801848](community.assets/image-20210927094801848.png)
+
+* 数据表准备
+
+![image-20211108193634361](community.assets/image-20211108193634361.png)
+
+entity_type:  评论的类型 是评论帖子 还是 评论某个人的评论.....
+
+entity_id:    所评论的目标的id
+
+target_id:   特定回复某个人 这个人的id
+
+* Comment实体类
+
+```java
+public class Comment {
+    private int id;
+    private int userId;
+    private int entityType;
+    private int entityId;
+    private int targetId;
+    private String content;
+    private int status;
+    private Date createTime;
+    }
+```
+
+* CommentMapper
+
+```java
+@Mapper
+public interface CommentMapper {
+    //根据实体类型查询评论
+    List<Comment> selectCommentsByEntity(int entityType, int entityId, int offset, int limit);
+    //查询评论数量
+    int selectCountByEntity(int entityType,int entityId);
+}
+```
+
+
 
 - service层CommentService
 
@@ -2604,9 +2761,9 @@ public interface LoginTicketMapper {
    * @param entityId:
    * @return int:
    */
-  public int queryCountByStatusAndEntity(int entityType, int entityId) {
-      return commentDao.queryCountByStatusAndEntity(entityType, entityId);
-  }
+  public int findCountByEntity(int entityType,int entityId){
+          return commentMapper.selectCountByEntity(entityType, entityId);
+      }
   
   /**
    * Description: 通过状态(=0)和Entity查询Comment
@@ -2616,9 +2773,9 @@ public interface LoginTicketMapper {
    * @param limit:
    * @return java.util.List<com.it.community.entity.Comment>:
    */
-  public List<Comment> findCommentsByEntity(int entityType, int entityId, int offset, int limit) {
-      return commentDao.selectCommentsByEntity(entityType, entityId, offset, limit);
-  }
+  public List<Comment> findCommentsByEntity(int entityType, int entityId, int offset, int limit){
+          return commentMapper.selectCommentsByEntity(entityType, entityId, offset, limit);
+      }
   ```
 
 
@@ -2817,17 +2974,17 @@ public interface LoginTicketMapper {
 
 ### 3.6 添加评论
 
+<img src="community.assets/image-20211109211719163.png" alt="image-20211109211719163" style="zoom: 50%;" />
+
 - CommentService：先增加评论、再更新帖子的评论数量(事务管理)
 
   ```java
-  @Resource
-  private CommentDao commentDao;
-  
-  @Resource
-  private SensitiveFilter sensitiveFilter;
-  
-  @Resource
-  private DiscussPostService discussPostService;
+      @Autowired
+      private SensitiveFilter sensitiveFilter;
+      @Autowired
+      private CommentMapper commentMapper;
+      @Autowired
+      private DiscussPostService discussPostService;
   
   /**
    * Description: 添加评论
@@ -2835,24 +2992,22 @@ public interface LoginTicketMapper {
    * @param comment:
    * @return int:
    */
-  @Transactional(isolation = Isolation.READ_COMMITTED, propagation = Propagation.REQUIRED)
-  public int addComment(Comment comment) {
-      if (comment == null) {
-          throw new IllegalArgumentException("参数不能为空！");
+   @Transactional(isolation = Isolation.READ_COMMITTED,propagation = Propagation.REQUIRED)
+      public int addComment(Comment comment){
+          if(comment == null){
+              throw new IllegalArgumentException("参数不能为空！");
+          }
+          //过滤 并 添加评论
+          comment.setContent(HtmlUtils.htmlEscape(comment.getContent()));
+          comment.setContent(sensitiveFilter.filter(comment.getContent()));
+          int rows = commentMapper.insertComment(comment);
+          //更新评论数量
+          if(comment.getEntityType() == ENTITY_TYPE_POST){
+              int count = commentMapper.selectCountByEntity(comment.getEntityType(), comment.getEntityId());
+              discussPostService.updateCommentCount(comment.getEntityId(),count);
+          }
+          return rows;
       }
-  
-      // 转义html字符和过滤敏感词
-      comment.setContent(HtmlUtils.htmlEscape(comment.getContent()));
-      comment.setContent(sensitiveFilter.filter(comment.getContent()));
-      // 添加评论
-      int rows = commentDao.insert(comment);
-      // 更新帖子评论数量（对评论的评论则不增加）
-      if (comment.getEntityType() == ENTITY_TYPE_POST) {
-          int count = commentDao.queryCountByStatusAndEntity(comment.getEntityType(), comment.getEntityId());
-          discussPostService.updateCommentCountById(comment.getEntityId(), count);
-      }
-      return rows;
-  }
   ```
 
 
@@ -2860,30 +3015,25 @@ public interface LoginTicketMapper {
 - CommentController：处理添加评论数据的请求
 
   ```java
+  
   @Controller
   @RequestMapping("/comment")
   public class CommentController {
-  
-      @Resource
+      @Autowired
       private CommentService commentService;
   
-      @Resource
+      @Autowired
       private HostHolder hostHolder;
   
-      @PostMapping("/add/{discussPostId}")
-      public String addComment(@PathVariable("discussPostId") int discussPostId, Comment comment) {
-          // 补充comment所缺信息
-          comment.setUserId(hostHolder.getUser().getId());
-          comment.setStatus(0);
-          comment.setCreateTime(new Date());
-          if (comment.getTargetId() == null) {
-              comment.setTargetId(0);
-          }
-          commentService.addComment(comment);
-  
-          // 重定向到该帖子详情页面
-          return "redirect:/discuss/detail/" + discussPostId;
+      @RequestMapping(path = "add/{discussPostId}", method = RequestMethod.POST)
+      public String addComment(@PathVariable("discussPostId") int discussPostId, Comment comment){
+        comment.setUserId(hostHolder.getUser().getId());
+        comment.setStatus(0);
+        comment.setCreateTime(new Date());
+        commentService.addComment(comment);
+        return "redirect:/discuss/detail/" + discussPostId;
       }
+  
   }
   ```
 
@@ -2911,7 +3061,7 @@ public interface LoginTicketMapper {
   </div>
   ```
 
-  >对评论的评论回复，有回复人target
+  >对回帖的评论：回复，有回复人target
 
   ```html
   <div th:id="|huifu-${rvoStat.count}|" class="mt-4 collapse">
@@ -2931,7 +3081,7 @@ public interface LoginTicketMapper {
   </div>
   ```
 
-  > 对评论的评论，无回复人target
+  > 对回帖的评论，无回复人target
 
   ```html
   <li class="pb-3 pt-3">
@@ -2951,6 +3101,8 @@ public interface LoginTicketMapper {
 
 
 ### 3.7 私信列表
+
+<img src="community.assets/image-20211110150245006.png" alt="image-20211110150245006" style="zoom:67%;" />
 
 - 私信列表：查询当前用户的会话列表， 每个会话只显示一条最新的私信，支持分页显示。
 
@@ -3329,6 +3481,8 @@ public interface LoginTicketMapper {
 
 ### 3.9 统一异常处理
 
+![image-20211114094250634](community.assets/image-20211114094250634.png)
+
 - SpringBoot的统一异常处理方案：
 
   > 错误页面资源放置在资源目录下的templates/error/404.html（或500.html），发生404错误或者500错误自动进行跳转（**访问的路径为静态页面地址**）。
@@ -3477,11 +3631,17 @@ public interface LoginTicketMapper {
 
 - Redis简介
 
-  >Redis是一款基于键值对的NoSQL数据库，它的值支持多种数据结构： 字符串(strings)、哈希(hashes)、列表(lists)、集合(sets)、有序集合(sorted sets)等。
+  >​     Redis是一款基于键值对的NoSQL数据库，它的值支持多种数据结构： 字符串(strings)、哈希(hashes)、列表(lists)、集合(sets)、有序集合(sorted sets)等。
   >
-  > Redis将所有的数据都存放在内存中，所以它的读写性能十分惊人。 同时，Redis还可以将内存中的数据以快照或日志的形式保存到硬盘上，以保证数据的安全性。
+  >​      Redis将所有的数据都存放在内存中，所以它的读写性能十分惊人。 同时，Redis还可以将内存中的数据以快照或日志 的形式保存到硬盘上，以保证数据的安全性。
   >
-  >Redis典型的应用场景包括：缓存、排行榜、计数器、社交网络、消息队列等。
+  >​      Redis典型的应用场景包括：缓存、排行榜、计数器、社交网络、消息队列等。
+  >
+  >   * RDB是以快照的形式，将内存中的数据整体拷贝到硬盘上
+  >     * 执行RDB存储时会产生阻塞，因此RDB不适合实时备份，而适合定时备份
+  >     * AOF操作的实时性好，但是产生的数据体积大，数据的恢复速度慢,以追加的形式将缓存中的数据存放到硬盘中。
+  >
+  >
 
 
 
@@ -3490,6 +3650,10 @@ public interface LoginTicketMapper {
 ![image-20210929154500167](community.assets/image-20210929154500167.png)
 
 ![image-20210929154523060](community.assets/image-20210929154523060.png)
+
+* Spring整合Redis步骤
+
+<img src="community.assets/image-20211115154645277.png" alt="image-20211115154645277" style="zoom:67%;" />
 
 
 
@@ -3578,6 +3742,8 @@ public interface LoginTicketMapper {
 
 
 ### 4.2 点赞
+
+![image-20211116085956093](community.assets/image-20211116085956093.png)
 
 - 点赞：支持对帖子、评论点赞、第1次点赞，第2次取消点赞
 
@@ -3906,6 +4072,8 @@ public interface LoginTicketMapper {
 
 ### 4.3 我收到的赞
 
+<img src="community.assets/image-20211116194338068.png" alt="image-20211116194338068" style="zoom:67%;" />
+
 - 重构点赞功能
 
   > 对于某个用户收到的赞的数量，采用Redis的String存储，like:user:(userId)作为key，而点赞数量作为value
@@ -4128,6 +4296,8 @@ public interface LoginTicketMapper {
 
 
 ### 4.4 关注、取消关注
+
+
 
 - 若A关注了B，则A是B的Follower（粉丝），B是A的Followee（目标）。关注的目标可以是用户、帖子、题目等，在实现时将这些目标抽象为实体。
 
@@ -4427,6 +4597,8 @@ public interface LoginTicketMapper {
 
 ### 4.5 关注列表、粉丝列表
 
+<img src="community.assets/image-20211120170522090.png" alt="image-20211120170522090" style="zoom:67%;" />
+
 - 查询某个用户关注的人和某个用户的粉丝，支持分页。
 
   > FollowService
@@ -4663,6 +4835,92 @@ public interface LoginTicketMapper {
 
 ### 4.6 我的帖子、我的回复
 
+* Controller
+
+```java
+@GetMapping("/discussPost/{userId}")
+    public String getMyDiscussPost(@PathVariable("userId") int userId, Model model, Page page){
+        //当前个人主页的作者
+        User user = userService.findUserById(userId);
+        model.addAttribute("user", user);
+        //评论分页信息
+        page.setLimit(5);
+        page.setPath("/discuss/discussPost/" + userId);
+        page.setRows(discussPostService.findDiscussPostRows(userId));
+
+        //查找当前作者发布的帖子
+        List<DiscussPost> myDiscussPosts = discussPostService.findDiscussPosts(userId, page.getOffset(), page.getLimit());
+
+        //当前帖子VO
+        List<Map<String, Object>> discussPostVoList = new ArrayList<>();
+        for(DiscussPost discussPost:myDiscussPosts){
+            Map<String, Object> map = new HashMap<>();
+            map.put("post", discussPost);
+            long likeCount = likeServcie.findEntityLikeCount(ENTITY_TYPE_COMMENT, discussPost.getId());
+            map.put("likeCount", likeCount);
+            discussPostVoList.add(map);
+        }
+        model.addAttribute("postVoList", discussPostVoList);
+
+        //当前作者发布的帖子总数
+        int mypostCount = discussPostService.findDiscussPostRows(userId);
+        model.addAttribute("mypostCount", mypostCount);
+
+        return "/site/my-post";
+    }
+```
+
+* 我的帖子按钮从profille.html页面中点击 需要传一个userId给 controller
+
+```html
+<li class="nav-item">
+	<a class="nav-link" th:href="@{|/discuss/discussPost/${user.id}|}">我的帖子</a>
+</li>
+```
+
+* 前端my-post页面 复用index.html的header.pagination
+
+```java
+<!-- 内容 -->
+		<div class="main">
+			<div class="container">
+				<!-- 选项 -->
+				<div class="position-relative">
+					<ul class="nav nav-tabs">
+						<li class="nav-item">
+							<a class="nav-link" th:href="@{|/user/profile/${user.id}|}">个人信息</a>
+						</li>
+						<li class="nav-item">
+							<a class="nav-link active" th:href="@{|/discuss/discussPost/${user.id}|}">我的帖子</a>
+						</li>
+						<li class="nav-item">
+							<a class="nav-link" href="my-reply.html">我的回复</a>
+						</li>
+					</ul>
+					<a th:href="@{|/user/profile/${user.id}|}" class="text-muted position-absolute rt-0">返回个人主页&gt;</a>
+				</div>
+				<!-- 我的帖子 -->
+				<div class="mt-4">
+					<h6><b class="square"></b> 发布的帖子(<i th:text="${mypostCount}">93</i>)</h6>
+					<ul class="list-unstyled mt-4 pl-3 pr-3">
+						<li class="border-bottom pb-3 mt-4" th:each="map:${postVoList}">
+							<div class="font-size-16 text-info">
+								<a th:href="@{|/discuss/detail/${map.post.id}|}" class="text-info" th:utext="${map.post.title}">备战春招，面试刷题跟他复习，一个月全搞定！</a>
+							</div>
+							<div class="mt-1 font-size-14" th:utext="${map.post.content}">
+								！！！								
+							</div>
+							<div class="text-right font-size-12 text-muted">
+								赞 <i class="mr-3" th:text="${map.likeCount}">11</i> 发布于
+								<b th:text="${#dates.format(map.post.createTime,'yyyy-MM-dd HH:mm:ss')}">2019-04-15 10:10:10</b>
+							</div>
+						</li>
+					</ul>				
+				</div>				
+			</div>
+		</div>
+```
+
 
 
 ### 4.7 优化登录模块
@@ -4685,15 +4943,16 @@ public interface LoginTicketMapper {
       
       // 登录验证码
       // kaptcha:owner owner为随机生成字符串，存入cookie，60s过期 -> value为验证码的text
+      
       public static String getKaptchaKey(String owner) {
           return PREFIX_KAPTCHA + SPLIT + owner;
       }
   
   }
   ```
-
+  
   > 修改LoginController，kaptcha:owner为key存入redis（60s过期）， owner为随机生成字符串，存入cookie，60s过期 -> value为验证码的text
-
+  
   ```java
   @GetMapping("/kaptcha")
   public void getKaptcha(HttpServletResponse response/*, HttpSession session*/) {
@@ -5095,51 +5354,64 @@ public interface LoginTicketMapper {
   >
   > 应用：消息系统、日志收集、用户行为追踪、流式处理
   >
-  > 特点：高吞吐量、消息持久化、高可靠性、高扩展性
+  > 特点：高吞吐量、消息持久化、高可靠性(分布式)、高扩展性(加一个服务器很方便)
   >
-  > 术语：Broker(Kafka的服务器)、Zookeeper(用于管理Kafka的集群)、Topic(存放消息的位置)、Partition(对Topic位置的分区，并发能力强)、Offset(消息在分区内的索引)、 Leader Replica(主副本，负责响应)、Follower Replica(随从副本)
-
+  > 术语：Broker(Kafka的服务器)
+  >
+  > ​            Zookeeper(用于管理Kafka的集群)
+  >
+  > ​            Topic(存放消息的位置)   Partition(对Topic位置的分区，并发能力强)、Offset(消息在分区内的索引)
+  >
+  > ​            Leader Replica(主副本，负责响应)、Follower Replica(随从副本)
+  >
+  > 消息队列实现方式：【点对点  生产者消费者一对一】
+  >
+  > ​            kafaka采用 【发布订阅  一个生产者发布消息到一个空间(Topic)，可被多个消费者订阅读取】
+  
   ![image-20211004142647576](community.assets/image-20211004142647576.png)
 
 
 
-- DOS命令行实现Kafka消息队列(kafka_2.12-2.3.0)
+- DOS命令行实现Kafka消息队列(kafka_2.13-2.3.0)
 
   > 修改config下zookeeper.properties和server.properties的日志文件存放路径
+  >
+  > 在d盘下创建data文件夹 存放kafka 和 zookeeper相关文件
 
-  > 在文件夹目录下启动服务器 （先启动zookeeper服务器，再启动kafka）
-
+  > 在文件夹目录下启动服务器 （先启动zookeeper服务器，再启动kafka,**用两个cmd窗口**）
+  
   ```
+  D:\software\kafka_2.12-2.8.1
   bin\windows\zookeeper-server-start.bat config\zookeeper.properties
   bin\windows\kafka-server-start.bat config\server.properties
   ```
-
-  >在bin\windows下创建主题
-
+  
+  >在bin\windows下创建主题    **新开一个cmd**
+  
   ```
   kafka-topics.bat --create --bootstrap-server localhost:9092 --replication-factor 1 --partitions 1  --topic test
   ```
-
+  
   > 查看当前服务器的主题
-
+  
   ```
   kafka-topics.bat --list --bootstrap-server localhost:9092
   ```
-
+  
   > 创建生产者，往指定主题上发消息
-
+  
   ```
   kafka-console-producer.bat --broker-list localhost:9092 --topic test
   ```
-
-  > 消费者
-
+  
+  > 消费者        **新开一个cmd**                             
+  
   ```
   kafka-console-consumer.bat --bootstrap-server localhost:9092 --topic test --from-beginning
   ```
-
-  > 关闭kafka服务器和zookeeper服务器
-
+  
+  > 关闭kafka服务器和zookeeper服务器    不要暴力关闭很可能会导致kafka无法完成对日志文件的解锁。届时，再次启动kafka的时候，就会提示日志文件被锁，无法成功启动。需要将kafka的日志文件全部删除，再次启动即可
+  
   ```
   kafka-server-stop.bat
   zookeeper-server-stop.bat
@@ -5149,8 +5421,10 @@ public interface LoginTicketMapper {
 
 - Spring整合Kafka
 
-  > 引入依赖
+  ![image-20211126163223024](community.assets/image-20211126163223024.png)
 
+  > 引入依赖
+  
   ```xml
   <!--Kafka-->
   <dependency>
@@ -5160,7 +5434,7 @@ public interface LoginTicketMapper {
   ```
 
   > 配置Kafka
-
+  
   ```yml
   # KafkaProperties
   spring:
@@ -5173,7 +5447,7 @@ public interface LoginTicketMapper {
   ```
 
   > Kafka消息队列示例
-
+  
   ```java
   @SpringBootTest(classes = CommunityApplication.class)
   public class KafkaTest {
@@ -5913,6 +6187,34 @@ public interface LoginTicketMapper {
 
 
 ## 6、分布式搜索引擎Elasticsearch
+
+* 下载 elasticsearch 6.4.3  
+* 下载elasticsearch-analysis-ik-6.4.3 并解压到 elasticsearch 6.4.3   安装目录的plugins文件夹下的ik夹中
+* 下载安装postman
+* 命令行示范elasticsearch
+
+![image-20211122210754489](community.assets/image-20211122210754489.png)
+
+* 采用postman代替命令行进行简单操作
+
+```
+put localhost:9200/test
+put localhost:9200/test/_doc/1
+get localhost:9200/test/_search?q=title:互联网
+get localhost:9200/test/_search?q=content:运营实习
+
+get localhost:9200/test/_search
+    {
+    "query":{
+        "multi_match":{
+            "query":"互联网",
+            "fields":["title","content"]
+        }
+     }
+    } 
+```
+
+
 
 ### 6.1 Spring整合Elasticsearch
 
