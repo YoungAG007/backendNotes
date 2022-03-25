@@ -1,7 +1,7 @@
 
 * [数据结构与算法](./docs/Datastructureandalgorithm.md)
 * [MySQL](./docs/MySQL基础.md)
-* [MySQL高级](./doc/MySQLAdvanced.md)
+* [MySQL高级](./docs/MySQLAdvanced.md)
 * [JDBC](./docs/尚硅谷_宋红康_JDBC.md)
 * [Maven](./docs/Maven.md)
 * [Javaweb基础](./docs/JavaWeb基础.md)
@@ -13,7 +13,7 @@
 * [计算机网络](./docs/计算机网络.md)
 * [操作系统](./docs/操作系统.md)
 * [JUC并发编程](./docs/JUC.md)
-* [力扣刷题笔记](./doc/T_Young_LeetCode刷题笔记.md)
+* [力扣刷题笔记](./docs/T_Young_LeetCode刷题笔记.md)
 * [Git](./docs/Git(GitHubGiteeGitLab).md)
 * [Bug](./docs/编程bug收集.md)
 * [how-to-use-docsify](./docs/how-to-use-docsify.md)
